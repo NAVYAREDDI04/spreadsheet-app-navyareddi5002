@@ -8,7 +8,7 @@ import { doc, onSnapshot, setDoc } from "firebase/firestore"
 export default function Editor() {
 
   const params = useParams<{ id: string }>()
-  const id = params.id
+  const id = params?.id || ""
 
   const rows = 12
   const columns = ["A","B","C","D","E","F"]
@@ -16,26 +16,23 @@ export default function Editor() {
   const [cells,setCells] = useState<Record<string,string>>({})
   const [saving,setSaving] = useState(false)
 
-  // realtime firestore listener
   useEffect(() => {
+
+    if(!id) return
 
     const ref = doc(db,"documents",id)
 
     const unsub = onSnapshot(ref,(snapshot)=>{
-
       const data = snapshot.data()
-
       if(data?.cells){
         setCells(data.cells)
       }
-
     })
 
     return () => unsub()
 
   },[id])
 
-  // update cell
   async function handleChange(cellId:string,value:string){
 
     const updated={
@@ -45,14 +42,13 @@ export default function Editor() {
 
     setCells(updated)
 
+    if(!id) return
+
     const ref = doc(db,"documents",id)
 
     setSaving(true)
-
     await setDoc(ref,{cells:updated})
-
     setSaving(false)
-
   }
 
   function getCellValue(id:string){
@@ -61,68 +57,84 @@ export default function Editor() {
 
   function evaluateFormula(value:string){
 
-    if(!value.startsWith("=")) return value
+    if(!value || !value.startsWith("=")) return value
 
-    // SUM
+    
     if(value.startsWith("=SUM(")){
 
-      const range=value.slice(5,-1)
-      const [start,end]=range.split(":")
+      const range = value.slice(5,-1)
 
-      const col=start[0]
-      const startRow=parseInt(start.slice(1))
-      const endRow=parseInt(end.slice(1))
+      if(!range.includes(":")) return "ERR"
 
-      let sum=0
+      const parts = range.split(":")
+      const start = parts[0]
+      const end = parts[1]
+
+      if(!start || !end) return "ERR"
+
+      const col = start.charAt(0)
+
+      const startRow = parseInt(start.substring(1))
+      const endRow = parseInt(end.substring(1))
+
+      if(isNaN(startRow) || isNaN(endRow)) return "ERR"
+
+      let sum = 0
 
       for(let i=startRow;i<=endRow;i++){
-        sum+=getCellValue(col+i)
+        sum += getCellValue(col+i)
       }
 
       return String(sum)
     }
 
-    // AVG
+    
     if(value.startsWith("=AVG(")){
 
-      const range=value.slice(5,-1)
-      const [start,end]=range.split(":")
+      const range = value.slice(5,-1)
 
-      const col=start[0]
-      const startRow=parseInt(start.slice(1))
-      const endRow=parseInt(end.slice(1))
+      if(!range.includes(":")) return "ERR"
 
-      let sum=0
-      let count=0
+      const parts = range.split(":")
+      const start = parts[0]
+      const end = parts[1]
+
+      if(!start || !end) return "ERR"
+
+      const col = start.charAt(0)
+
+      const startRow = parseInt(start.substring(1))
+      const endRow = parseInt(end.substring(1))
+
+      if(isNaN(startRow) || isNaN(endRow)) return "ERR"
+
+      let sum = 0
+      let count = 0
 
       for(let i=startRow;i<=endRow;i++){
-        sum+=getCellValue(col+i)
+        sum += getCellValue(col+i)
         count++
       }
 
-      return String(sum/count)
+      return count ? String(sum/count) : "0"
     }
 
-    // arithmetic
+    
     try{
 
-      let expr=value.slice(1)
+      let expr = value.substring(1)
 
       columns.forEach(col=>{
         for(let r=1;r<=rows;r++){
-
-          const key=col+r
-          expr=expr.replaceAll(key,String(getCellValue(key)))
-
+          const key = col+r
+          expr = expr.replaceAll(key,String(getCellValue(key)))
         }
       })
 
       return String(Function("return "+expr)())
 
     }catch{
-
       return "ERR"
-
     }
   }
 
@@ -143,24 +155,18 @@ export default function Editor() {
         <table className="border-collapse">
 
           <thead>
-
             <tr>
-
               <th className="border p-2 bg-gray-200"></th>
 
               {columns.map(col=>(
-
                 <th
                   key={col}
                   className="border p-2 bg-gray-200 w-28"
                 >
                   {col}
                 </th>
-
               ))}
-
             </tr>
-
           </thead>
 
           <tbody>
@@ -192,6 +198,8 @@ export default function Editor() {
                       <td key={cellId} className="border">
 
                         <input
+                          id={cellId}
+                          name={cellId}
                           className="w-full p-1 outline-none"
                           value={rawValue}
                           onChange={(e)=>
